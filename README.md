@@ -57,6 +57,35 @@ Create a runnable app image (via the JavaFX Maven plugin & jlink configuration) 
 ```
 (See `javafx-maven-plugin` config in `pom.xml` for jlink image parameters.)
 
+### Standalone Fat JAR
+A shaded ("fat") JAR is produced using the Maven Shade Plugin.
+
+Build (skip tests if desired):
+```
+./mvnw -DskipTests package
+```
+Resulting JAR:
+```
+target/glidewall-all.jar
+```
+Run:
+```
+java -jar target/glidewall-all.jar
+```
+Notes:
+- The module descriptor is excluded so the app runs in classic classpath mode.
+- If you encounter JavaFX native library issues on some platforms, prefer the jlink image below.
+
+### Custom Runtime Image (jlink)
+```
+./mvnw clean javafx:jlink
+```
+Run the generated image:
+```
+./target/app/bin/app
+```
+This bundles only the required modules + JavaFX natives for the build platform.
+
 ## Configuration Ideas (Not Yet Implemented)
 - Persist last used folder & interval
 - Multi‑monitor fullscreen support
@@ -78,4 +107,3 @@ For full terms see: https://www.gnu.org/licenses/agpl-3.0.html
 
 ## Attribution
 Developed using JavaFX and Maven, with assistance from AI tooling for documentation and refactoring.
-

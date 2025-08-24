@@ -5,7 +5,7 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.StackPane?>
-<BorderPane fx:id="rootPane" style="-fx-background-color: black;" xmlns:fx="http://javafx.com/fxml" fx:controller="cloud.dest.bms.demo.SlideshowController">
+<BorderPane fx:id="rootPane" style="-fx-background-color: black;" xmlns:fx="http://javafx.com/fxml" fx:controller="com.spatiosoft.glidewall.SlideshowController">
     <top>
         <ToolBar fx:id="toolBar">
             <Button text="Choose Folder" onAction="#onChooseFolder" />
@@ -40,3 +40,4 @@
         <Insets top="5" right="5" bottom="5" left="5" />
     </padding>
 </BorderPane>
+

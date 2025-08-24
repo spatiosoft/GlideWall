@@ -1,4 +1,4 @@
-package cloud.dest.bms.demo;
+package com.spatiosoft.glidewall;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -19,6 +19,10 @@ public class HelloApplication extends Application {
         if (css != null) scene.getStylesheets().add(css.toExternalForm());
         stage.setTitle("GlideWall");
         var iconUrl = HelloApplication.class.getResource("glidewall-icon.png");
+        if (iconUrl == null) {
+            // Fallback to old package location if file not yet moved
+            iconUrl = HelloApplication.class.getResource("/com/spatiosoft/glidewall/glidewall-icon.png");
+        }
         if (iconUrl != null) {
             stage.getIcons().add(new Image(iconUrl.toExternalForm()));
         }

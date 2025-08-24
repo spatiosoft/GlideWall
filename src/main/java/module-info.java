@@ -1,8 +1,8 @@
-module cloud.dest.bms.demo {
+module com.spatiosoft.glidewall {
     requires javafx.controls;
     requires javafx.fxml;
-    requires java.desktop; // still needed for About dialog hyperlink (Desktop)
+    requires java.desktop;
 
-    opens cloud.dest.bms.demo to javafx.fxml;
-    exports cloud.dest.bms.demo;
+    opens com.spatiosoft.glidewall to javafx.fxml;
+    exports com.spatiosoft.glidewall;
 }
