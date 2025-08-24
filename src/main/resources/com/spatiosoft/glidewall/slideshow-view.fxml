@@ -5,19 +5,21 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.Region?>
 <BorderPane fx:id="rootPane" style="-fx-background-color: black;" xmlns:fx="http://javafx.com/fxml" fx:controller="com.spatiosoft.glidewall.SlideshowController">
     <top>
         <ToolBar fx:id="toolBar">
-            <Button text="Choose Folder" onAction="#onChooseFolder" />
+            <Button fx:id="chooseFolderButton" text="Choose Folder" onAction="#onChooseFolder" />
             <Label text="Interval (s):" />
             <Spinner fx:id="intervalSpinner" prefWidth="80" />
-            <Button text="Start" onAction="#onStart" />
-            <Button text="Stop" onAction="#onStop" />
-            <Button text="Refresh" onAction="#onManualRefresh" />
-            <Button text="Shuffle" onAction="#onShuffle" />
+            <Button fx:id="startButton" text="Start" onAction="#onStart" />
+            <Button fx:id="stopButton" text="Stop" onAction="#onStop" />
+            <Button fx:id="refreshButton" text="Refresh" onAction="#onManualRefresh" />
+            <Button fx:id="shuffleButton" text="Shuffle" onAction="#onShuffle" />
             <Button fx:id="fullScreenButton" text="Fullscreen" onAction="#onToggleFullscreen" />
-            <Button text="About" onAction="#onAbout" />
-            <Button text="Server" onAction="#onOpenServerWindow" />
+            <Button fx:id="serverButton" text="Server" onAction="#onOpenServerWindow" />
+            <Region HBox.hgrow="ALWAYS" />
+            <Button fx:id="aboutButton" text="About" onAction="#onAbout" />
         </ToolBar>
     </top>
     <left>

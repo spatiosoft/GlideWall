@@ -14,6 +14,7 @@ GlideWall is a JavaFX desktop application that plays an auto‑updating slidesho
 - Manual Refresh button (force immediate rescan)
 - Placeholder guidance when no folder or images are available
 - Efficient thumbnail caching
+- Optional local “Server Mode” (Python web uploader + mobile gallery + QR code)
 
 Supported image formats (by simple extension match): JPG, JPEG, PNG, GIF, BMP, WEBP.
 
@@ -35,6 +36,39 @@ Then:
 4. Add or remove images in the folder tree; changes appear automatically.
 5. Toggle Fullscreen for display mode (ESC to exit fullscreen).
 
+## Server Mode (Optional Local Web Uploader & Mobile Viewer)
+GlideWall can launch a lightweight Python HTTP server so you (or anyone on your LAN) can upload images directly from a browser or mobile device into the currently selected slideshow folder.
+
+### What It Provides
+- Drag/drop or multi‑select upload form (accepts JPG/JPEG/PNG/GIF/BMP/WEBP)
+- Instant appearance of newly uploaded images in the running slideshow (via watcher + periodic rescan)
+- Auto‑listed thumbnails sorted by most recent
+- Built‑in fullscreen viewer (click a thumbnail: overlay + arrow / swipe navigation + ESC close)
+- Mobile friendly layout + swipe left/right gestures
+- QR code in the JavaFX Server window for quick phone access
+- Automatic local network URL selection (attempts a site‑local IPv4; falls back to localhost)
+
+### Requirements
+- Python 3 available on PATH (`python3` on Unix, `python` on Windows)
+- The script `uploader/upload_server.py` (bundled in repo)
+
+### Usage Steps
+1. In GlideWall pick a folder (required before starting server).
+2. Press the "Server" button, then click "Start" in the server window.
+3. Note the displayed URL or scan the QR code with a mobile device on the same network.
+4. Use the web page to upload images – they appear in the slideshow automatically.
+5. Click any web thumbnail to open fullscreen; swipe or use arrow keys to navigate.
+
+### Security / Limitations
+- Intended for trusted local networks only: NO authentication, encryption, rate limiting, or sandboxing.
+- Fixed port 8080 (current implementation). If the port is in use, the server will fail to start.
+- All uploaded files are written directly into the chosen folder tree (basic filename sanitization + signature sniffing, but no deep image validation).
+- No HTTPS / TLS; use behind a secure LAN or tunnel if needed.
+- Large uploads limited by a simple size cap (25MB per request).
+
+### Stopping
+Use the "Stop" button in the Server window or close the GlideWall app (which stops the process).
+
 ## How It Works (Overview)
 - A recursive scan builds an in‑memory list of image Paths.
 - A WatchService registers every subdirectory to detect create / delete / modify events.
@@ -43,11 +77,14 @@ Then:
 - UI updates are marshalled onto the JavaFX Application Thread (Platform.runLater).
 - Thumbnails are generated on demand and cached.
 - When new images are detected the list is reshuffled (if shuffle mode) to integrate them fairly.
+- Server Mode (if active) writes files into the folder, triggering the same detection pipeline.
 
 ## Project Structure
 - `HelloApplication` boots the JavaFX app, loads FXML + CSS, sets window title/icon.
 - `slideshow-view.fxml` defines layout (toolbar, thumbnail list, main image view, status bar, placeholder label).
-- `SlideshowController` encapsulates logic (scanning, watching, scheduling, UI state, fullscreen handling, shuffle, manual refresh, about dialog).
+- `SlideshowController` encapsulates logic (scanning, watching, scheduling, UI state, fullscreen handling, shuffle, manual refresh, about dialog, server mode launcher).
+- `uploader/upload_server.py` optional Python HTTP uploader + gallery.
+- `uploader/viewer.js` client-side fullscreen + swipe gallery script.
 - `slideshow.css` styles the UI.
 
 ## Build / Packaging
@@ -92,6 +129,7 @@ This bundles only the required modules + JavaFX natives for the build platform.
 - Transition effects & fade durations
 - Filter by extension / size / date
 - Exclude specific subfolders
+- Server mode: configurable port / authentication / HTTPS
 
 ## Contributing
 Issues and pull requests are welcome. Please discuss substantial changes first so the scope aligns with GlideWall's lightweight goals.

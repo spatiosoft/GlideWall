@@ -34,6 +34,14 @@ public class SlideshowController {
     @FXML private Spinner<Integer> intervalSpinner;
     @FXML private Label statusLabel;
     @FXML private Button fullScreenButton;
+    // Newly added button references matching FXML ids
+    @FXML private Button chooseFolderButton;
+    @FXML private Button startButton;
+    @FXML private Button stopButton;
+    @FXML private Button refreshButton;
+    @FXML private Button shuffleButton;
+    @FXML private Button serverButton;
+    @FXML private Button aboutButton;
     @FXML private BorderPane rootPane;
     @FXML private ToolBar toolBar;
     @FXML private ListView<Path> thumbList;
@@ -76,6 +84,9 @@ public class SlideshowController {
     private Hyperlink serverUrlLink;
     private ImageView qrView;
 
+    private boolean autoStartDone = false; // ensures auto-start happens only once
+    private boolean userStartStopAction = false; // set true if user explicitly starts/stops to prevent auto restarts
+
     @FXML
     private void initialize() {
         intervalSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 3600, 5));
@@ -100,6 +111,7 @@ public class SlideshowController {
         });
         setupThumbList();
         Platform.runLater(this::updatePlaceholderVisibility);
+        Platform.runLater(this::updateButtonStates);
     }
 
     private void installFullScreenListener(Stage stage) {
@@ -123,7 +135,11 @@ public class SlideshowController {
     }
 
     @FXML private void onOpenServerWindow() {
-        if (serverStage != null) { serverStage.toFront(); return; }
+        if (serverStage != null) {
+            serverStage.show();
+            serverStage.toFront();
+            return;
+        }
         serverStage = new Stage();
         serverStage.setTitle("Uploader Server");
         serverStage.initOwner(imageView.getScene().getWindow());
@@ -139,12 +155,13 @@ public class SlideshowController {
         serverLogArea.setStyle("-fx-font-family: 'monospace'; -fx-font-size: 11;");
         serverStartButton.setOnAction(e -> startUploader());
         serverStopButton.setOnAction(e -> stopUploader());
-        Button closeBtn = new Button("Close"); closeBtn.setOnAction(e -> serverStage.close());
+        Button hideBtn = new Button("Hide");
+        hideBtn.setOnAction(e -> serverStage.hide());
         serverUrlLink = new Hyperlink("(server not started)");
         serverUrlLink.setOnAction(e -> openInBrowser(serverUrlLink.getText()));
         qrView = new ImageView();
         qrView.setFitWidth(180); qrView.setFitHeight(180); qrView.setPreserveRatio(true);
-        HBox buttonRow = new HBox(8, serverStartButton, serverStopButton, serverProcStatusLabel, closeBtn);
+        HBox buttonRow = new HBox(8, serverStartButton, serverStopButton, serverProcStatusLabel, hideBtn);
         buttonRow.setPadding(new Insets(4,0,4,0));
         HBox urlRow = new HBox(6, new Label("URL:"), serverUrlLink);
         VBox qrBox = new VBox(4, new Label("QR Code:"), qrView);
@@ -161,7 +178,8 @@ public class SlideshowController {
         );
         root.setPadding(new Insets(10));
         serverStage.setScene(new Scene(root, 760, 480));
-        serverStage.setOnCloseRequest(e -> {});
+        // Do not stop uploader or null references when hidden; allow reopen.
+        serverStage.setOnHidden(e -> refreshServerUIState());
         serverStage.show();
         refreshServerUIState();
         updateServerUrlAndQR();
@@ -316,15 +334,52 @@ public class SlideshowController {
         }
     }
 
+    private void updateButtonStates() {
+        boolean hasFolder = rootDirectory != null;
+        boolean isRunning = running;
+        if (startButton != null) startButton.setDisable(!hasFolder || isRunning || imageFiles.isEmpty());
+        if (stopButton != null) stopButton.setDisable(!hasFolder || !isRunning);
+        if (refreshButton != null) refreshButton.setDisable(!hasFolder);
+        if (shuffleButton != null) shuffleButton.setDisable(!hasFolder || imageFiles.size() < 2);
+        if (fullScreenButton != null) fullScreenButton.setDisable(!hasFolder);
+        if (serverButton != null) serverButton.setDisable(!hasFolder);
+        if (aboutButton != null) aboutButton.setDisable(false); // always enabled now
+    }
+
+    private void attemptAutoStart() {
+        // Auto-start only if: not running yet, not already auto-started, user hasn't manually intervened, we have a folder and at least one image.
+        if (!running && !autoStartDone && !userStartStopAction && rootDirectory != null) {
+            boolean hasImages; synchronized (this) { hasImages = !imageFiles.isEmpty(); }
+            if (hasImages) {
+                autoStartDone = true; // mark now to avoid race double-start
+                Platform.runLater(() -> {
+                    if (!running) {
+                        onStart(); // onStart will set running and schedule tasks
+                        status("Auto-started slideshow");
+                    }
+                });
+            }
+        }
+    }
+
     @FXML private void onChooseFolder() {
         DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Select Image Folder");
         Window w = imageView.getScene()!=null? imageView.getScene().getWindow(): null;
         Path selected = null; try { var dir = chooser.showDialog(w); if (dir!=null) selected = dir.toPath(); } catch (Exception ignored) {}
-        if (selected!=null) { stopWatcher(); rootDirectory = selected; status("Selected: " + rootDirectory); rebuildFileList(); startWatcher(); refreshServerUIState(); }
+        if (selected!=null) {
+            stopWatcher();
+            rootDirectory = selected; status("Selected: " + rootDirectory);
+            // Reset auto-start flags for new folder selection
+            autoStartDone = false; userStartStopAction = false; running = false; cancelTask(slideshowTask); cancelTask(rescanTask);
+            rebuildFileList();
+            startWatcher(); refreshServerUIState(); updateButtonStates();
+            // attempt auto-start in case images were already present and rebuild finished synchronously
+            attemptAutoStart();
+        }
     }
 
-    @FXML private void onStart() { if (running) return; if (rootDirectory==null) { status("Choose a folder first"); return; } running=true; scheduleRescan(); scheduleSlideshow(); status("Running"); }
-    @FXML private void onStop() { if (!running) { updatePlaceholderVisibility(); return; } running=false; cancelTask(slideshowTask); cancelTask(rescanTask); status("Stopped"); updatePlaceholderVisibility(); }
+    @FXML private void onStart() { if (running) return; if (rootDirectory==null) { status("Choose a folder first"); return; } running=true; userStartStopAction = true; scheduleRescan(); scheduleSlideshow(); status("Running"); updateButtonStates(); }
+    @FXML private void onStop() { if (!running) { updatePlaceholderVisibility(); return; } running=false; userStartStopAction = true; cancelTask(slideshowTask); cancelTask(rescanTask); status("Stopped"); updatePlaceholderVisibility(); updateButtonStates(); }
 
     private void scheduleSlideshow() { cancelTask(slideshowTask); int interval = intervalSpinner.getValue(); slideshowTask = scheduler.scheduleAtFixedRate(this::showNextImage,0,interval,TimeUnit.SECONDS); intervalSpinner.valueProperty().addListener((obs,o,n)-> { if (running && n!=null && !n.equals(o)) scheduleSlideshow(); }); }
     private void scheduleRescan() { cancelTask(rescanTask); rescanTask = scheduler.scheduleAtFixedRate(this::rebuildFileList,0,10,TimeUnit.SECONDS); }
@@ -335,7 +390,7 @@ public class SlideshowController {
 
     private void rebuildFileList() { if (rootDirectory==null) { Platform.runLater(this::updatePlaceholderVisibility); return; } List<Path> oldList; synchronized (this) { oldList = new ArrayList<>(imageFiles); } Set<Path> oldSet = new HashSet<>(oldList); try (Stream<Path> stream = Files.walk(rootDirectory)) { List<Path> discovered = stream.filter(Files::isRegularFile).filter(this::isImageFile).collect(java.util.stream.Collectors.toCollection(ArrayList::new)); List<Path> added = new ArrayList<>(); for (Path p: discovered) if (!oldSet.contains(p)) added.add(p); boolean anyAdded = !added.isEmpty(); boolean anyRemoved = oldList.size() > discovered.size(); List<Path> finalOrder; if (anyAdded) { finalOrder = new ArrayList<>(discovered); Collections.shuffle(finalOrder, random); shuffledMode = true; } else if (shuffledMode) { finalOrder = new ArrayList<>(); for (Path p: oldList) if (discovered.contains(p)) finalOrder.add(p); } else { finalOrder = new ArrayList<>(discovered); Collections.sort(finalOrder); }
         synchronized (this) { imageFiles.clear(); imageFiles.addAll(finalOrder); if (lastShown!=null) { int idx = imageFiles.indexOf(lastShown); currentIndex = idx>=0? idx : -1; } else currentIndex = -1; }
-        Platform.runLater(()-> { observableImages.setAll(finalOrder); thumbCache.keySet().removeIf(p-> !imageFiles.contains(p)); if (fileCountLabel!=null) fileCountLabel.setText(String.valueOf(finalOrder.size())); if (anyAdded) status(String.format("New images: %d (auto-reshuffled)", added.size())); else if (anyRemoved) status("Images removed (list updated)"); updatePlaceholderVisibility(); }); } catch (IOException ignored) { Platform.runLater(this::updatePlaceholderVisibility); } }
+        Platform.runLater(()-> { observableImages.setAll(finalOrder); thumbCache.keySet().removeIf(p-> !imageFiles.contains(p)); if (fileCountLabel!=null) fileCountLabel.setText(String.valueOf(finalOrder.size())); if (anyAdded) status(String.format("New images: %d (auto-reshuffled)", added.size())); else if (anyRemoved) status("Images removed (list updated)"); updatePlaceholderVisibility(); updateButtonStates(); attemptAutoStart(); }); } catch (IOException ignored) { Platform.runLater(this::updatePlaceholderVisibility); } }
 
     private void startWatcher() { if (rootDirectory==null) return; try { watchService = FileSystems.getDefault().newWatchService(); registerAll(rootDirectory); watchTask = scheduler.submit(this::processWatchEvents); } catch (IOException e) { status("Watcher error: " + e.getMessage()); } }
     private void registerAll(Path start) throws IOException { try (Stream<Path> dirs = Files.walk(start)) { dirs.filter(Files::isDirectory).forEach(dir -> { try { dir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY); } catch (IOException ignored) {} }); } }

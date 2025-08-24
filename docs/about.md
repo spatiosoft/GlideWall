@@ -1,5 +1,7 @@
 # About GlideWall
 
+[Home](index.md) · [Help](help.md) · [About](about.md)
+
 GlideWall is a lightweight JavaFX desktop application for continuously presenting a folder tree of images as a dynamic slideshow. It targets scenarios like digital photo walls, informal office signage, and creative mood boards where frictionless updates matter more than heavy media management features.
 
 ![GlideWall Logo](assets/glidewall-logo.svg)
@@ -49,6 +51,42 @@ GlideWall instead watches the actual filesystem so you can just drop images into
 - Image display uses on-demand loading (JavaFX Image with background loading flag).
 - Rebuild operations snapshot existing order to minimize disruptive reordering when not required.
 
+## Server Mode (Optional Uploader & Web Viewer)
+GlideWall can optionally launch a lightweight Python HTTP server tied to the currently selected folder. This enables direct uploads from any device on the same local network and provides a mobile‑friendly thumbnail gallery with a built‑in fullscreen + swipe viewer.
+
+### Highlights
+- Drag/drop multi‑file upload (JPG/JPEG/PNG/GIF/BMP/WEBP)
+- Immediate integration with the running slideshow (filesystem watcher + periodic rescan)
+- Thumbnails ordered newest first
+- Javascript fullscreen overlay: arrow keys & swipe navigation, ESC / × to exit
+- QR code shown in the desktop Server window for quick mobile access
+- Attempts to advertise a site‑local IPv4; falls back to localhost
+
+### Usage Summary
+1. Select a slideshow folder.
+2. Open Server window (Server button) and click Start.
+3. Scan QR code or open displayed URL (default http://<local-ip>:8080/).
+4. Upload images; they appear in the slideshow automatically.
+5. Click any web thumbnail for fullscreen navigation.
+
+### Security & Limits
+| Aspect | Current Behavior |
+|--------|------------------|
+| Auth | None (trusted LAN only) |
+| Transport | HTTP (no TLS) |
+| Port | Fixed 8080 |
+| Validation | Basic filename sanitization + simple signature sniff |
+| Size limit | 25MB per request |
+| Rate limiting | None |
+
+Do not expose directly to untrusted networks without adding authentication, HTTPS (reverse proxy), and stricter validation.
+
+### Future Enhancements (Potential)
+- Configurable port & bind address
+- Optional authentication / access token
+- HTTPS support (self‑signed or reverse proxy guidance)
+- Upload quotas / rate limiting
+
 ## Limitations (Current)
 - No fade / dissolve transitions
 - No persistence of last folder or interval between sessions
@@ -70,5 +108,4 @@ SPDX-License-Identifier: AGPL-3.0-only
 ## Attribution
 Developed with JavaFX and Maven; documentation generated with assistance from AI tooling.
 
-Return to [Home](./index.md) · See [Help](./help.md)
-
+[Home](index.md) · [Help](help.md) · [About](about.md)
