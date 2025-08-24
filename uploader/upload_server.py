@@ -28,6 +28,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import List, Tuple, Optional
 import urllib.parse  # added for URL encoding
+import math  # pagination
 
 ALLOWED_EXT = {"jpg", "jpeg", "png", "gif", "bmp", "webp"}
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB per request
@@ -43,6 +44,12 @@ TRANSLATIONS = {
         'choose_files_aria': 'Choose image files to upload',
         'upload_btn_aria': 'Upload selected images',
         'footer': '{count} file(s) • Mobile-friendly layout',
+        # Pagination labels
+        'pg_first': '« First',
+        'pg_prev': '‹ Prev',
+        'pg_next': 'Next ›',
+        'pg_last': 'Last »',
+        'pg_page_meta': 'Page {cur}/{total}',
     },
     'fr': {
         'title': 'Téléverseur d’images GlideWall',
@@ -53,6 +60,12 @@ TRANSLATIONS = {
         'choose_files_aria': 'Sélectionner des images à téléverser',
         'upload_btn_aria': 'Téléverser les images sélectionnées',
         'footer': '{count} fichier{plural} • Affichage mobile',
+        # Pagination labels (concise French)
+        'pg_first': '« Première',
+        'pg_prev': '‹ Préc.',
+        'pg_next': 'Suiv. ›',
+        'pg_last': 'Dernière »',
+        'pg_page_meta': 'Page {cur}/{total}',
     }
 }
 
@@ -210,6 +223,18 @@ class UploadHandler(SimpleHTTPRequestHandler):
     def _serve_index(self):
         lang = pick_lang(self.path, self.headers)
         T = TRANSLATIONS.get(lang, TRANSLATIONS['en'])
+        # --- parse query params (for page & lang) ---
+        query = ''
+        if '?' in self.path:
+            query = self.path.split('?', 1)[1]
+        qparams = urllib.parse.parse_qs(query)
+        try:
+            page = int(qparams.get('page', ['1'])[0])
+        except ValueError:
+            page = 1
+        if page < 1:
+            page = 1
+        page_size = 50
         try:
             images = sorted(
                 [f for f in os.listdir(self.upload_dir) if is_allowed_image(f)],
@@ -218,8 +243,15 @@ class UploadHandler(SimpleHTTPRequestHandler):
             )
         except FileNotFoundError:
             images = []
+        total = len(images)
+        total_pages = max(1, math.ceil(total / page_size))
+        if page > total_pages:
+            page = total_pages
+        start_i = (page - 1) * page_size
+        end_i = start_i + page_size
+        page_slice = images[start_i:end_i]
         rows = []
-        for img in images:
+        for img in page_slice:
             esc = html.escape(img)
             encoded = urllib.parse.quote(img)  # ensure safe URL
             rows.append(
@@ -227,7 +259,7 @@ class UploadHandler(SimpleHTTPRequestHandler):
                 f'<img loading="lazy" src="{encoded}" alt="{esc}"></a><div class="cap" title="{esc}">{esc}</div></div>'
             )
         gallery = '\n'.join(rows) or f'<p class="empty">{html.escape(T["no_images"])}</p>'
-        count = len(images)
+        count = total
         plural = '' if count == 1 else ('s' if lang == 'en' else 's')
         heading_suffix = T['heading_files_suffix'].format(count=count, plural=plural)
         notice = T['allowed_notice'].format(ext=', '.join(sorted(ALLOWED_EXT)), size=MAX_BYTES//1024//1024)
@@ -239,6 +271,38 @@ class UploadHandler(SimpleHTTPRequestHandler):
         switch_links = '<div style="font-size:.65rem;opacity:.65;margin-left:auto;">' \
                        f'<a href="?lang=en" style="color:#7aa7d6;text-decoration:none;">EN</a> | ' \
                        f'<a href="?lang=fr" style="color:#7aa7d6;text-decoration:none;">FR</a></div>'
+        # Pagination navigation
+        def page_link(p, label=None, disabled=False):
+            if disabled:
+                return f'<span class="pg disabled" aria-disabled="true">{html.escape(label or str(p))}</span>'
+            label = label or str(p)
+            return f'<a class="pg" href="?lang={lang}&page={p}">{html.escape(label)}</a>'
+        nav_html = ''
+        if total_pages > 1:
+            parts = []
+            lbl_first = T.get('pg_first', '« First')
+            lbl_prev = T.get('pg_prev', '‹ Prev')
+            lbl_next = T.get('pg_next', 'Next ›')
+            lbl_last = T.get('pg_last', 'Last »')
+            meta_tpl = T.get('pg_page_meta', 'Page {cur}/{total}')
+            parts.append(page_link(1, lbl_first, disabled=(page==1)))
+            parts.append(page_link(page-1, lbl_prev, disabled=(page==1)))
+            # window of pages around current
+            win = 2
+            lo = max(1, page - win)
+            hi = min(total_pages, page + win)
+            if lo > 2:
+                parts.append('<span class="pg ell">…</span>')
+            for p in range(lo, hi+1):
+                if p == page:
+                    parts.append(f'<span class="pg current" aria-current="page">{p}</span>')
+                else:
+                    parts.append(page_link(p))
+            if hi < total_pages - 1:
+                parts.append('<span class="pg ell">…</span>')
+            parts.append(page_link(page+1, lbl_next, disabled=(page==total_pages)))
+            parts.append(page_link(total_pages, lbl_last, disabled=(page==total_pages)))
+            nav_html = '<nav class="pagination" aria-label="Pages">' + '\n'.join(parts) + f'<span class="pg meta">' + html.escape(meta_tpl.format(cur=page, total=total_pages)) + '</span></nav>'
         page = f"""<!DOCTYPE html>
 <html lang="{lang}"><head><meta charset="UTF-8"><title>{page_title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
@@ -264,20 +328,28 @@ button:focus-visible {{ box-shadow:0 0 0 3px #fff3,0 0 0 5px var(--focus); }}
 .thumb img {{ width:100%; height:120px; object-fit:contain; background:#0b0f17; border:1px solid var(--panel-border); border-radius:8px; padding:6px; }}
 .cap {{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 .25rem; opacity:.85; }}
 .empty {{ opacity:.6; font-style:italic; }}
+.pagination {{ display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; margin:1.1rem 0 .25rem; font-size:.7rem; }}
+.pagination .pg {{ background:#16202a; border:1px solid #243240; padding:.35rem .6rem; border-radius:6px; text-decoration:none; color:#dfe7f1; line-height:1; display:inline-flex; align-items:center; gap:.25rem; }}
+.pagination .pg:hover {{ background:#1e2c38; }}
+.pagination .current {{ background:var(--accent); border-color:var(--accent); font-weight:600; }}
+.pagination .disabled {{ opacity:.35; background:#111a22; cursor:not-allowed; }}
+.pagination .ell {{ border:0; background:transparent; padding:0 .25rem; }}
+.pagination .meta {{ margin-left:auto; opacity:.6; font-weight:400; letter-spacing:.5px; }}
 footer {{ margin-top:2rem; font-size:.65rem; opacity:.55; text-align:center; }}
 @media (max-width:900px) {{ .thumb {{ flex:1 1 calc(33.333% - var(--gap)); }} }}
-@media (max-width:640px) {{ .thumb {{ flex:1 1 calc(50% - var(--gap)); }} form {{ flex-direction:column; align-items:stretch; }} form input[type=file] {{ width:100%; }} button {{ width:100%; }} .notice {{ font-size:.65rem; }} }}
+@media (max-width:640px) {{ .thumb {{ flex:1 1 calc(50% - var(--gap)); }} form {{ flex-direction:column; align-items:stretch; }} form input[type=file] {{ width:100%; }} button {{ width:100%; }} .notice {{ font-size:.65rem; }} .pagination {{ font-size:.65rem; }} }}
 @media (max-width:400px) {{ .thumb {{ flex:1 1 100%; }} body {{ margin:.75rem .5rem 2rem; }} }}
 @media (prefers-reduced-motion:reduce) {{ * {{ animation:none!important; transition:none!important; }} }}
 </style></head>
 <body>
-<h1>{page_title} <small style=\"font-size:.55em;font-weight:400;opacity:.6\">{heading_suffix}</small>{switch_links}</h1>
-<form method=\"POST\" enctype=\"multipart/form-data\" aria-label=\"Upload images form\">
-  <input type=\"file\" name=\"files\" multiple accept=\"image/*\" required aria-label=\"{choose_files_aria}\">
-  <button type=\"submit\" aria-label=\"{upload_btn_aria}\">{upload_label}</button>
-  <div class=\"notice\">{notice}</div>
+<h1>{page_title} <small style="font-size:.55em;font-weight:400;opacity:.6">{heading_suffix}</small>{switch_links}</h1>
+<form method="POST" enctype="multipart/form-data" aria-label="Upload images form">
+  <input type="file" name="files" multiple accept="image/*" required aria-label="{choose_files_aria}">
+  <button type="submit" aria-label="{upload_btn_aria}">{upload_label}</button>
+  <div class="notice">{notice}</div>
 </form>
-<div class=\"gallery\">
+{nav_html}
+<div class="gallery">
 {gallery}
 </div>
 <footer>{footer}</footer>
