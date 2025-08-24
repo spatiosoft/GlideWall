@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.Insets?>
+<BorderPane fx:id="rootPane" style="-fx-background-color: black;" xmlns:fx="http://javafx.com/fxml" fx:controller="cloud.dest.bms.demo.SlideshowController">
+    <top>
+        <ToolBar fx:id="toolBar">
+            <Button text="Choose Folder" onAction="#onChooseFolder" />
+            <Label text="Interval (s):" />
+            <Spinner fx:id="intervalSpinner" prefWidth="80" />
+            <Button text="Start" onAction="#onStart" />
+            <Button text="Stop" onAction="#onStop" />
+            <Button text="Refresh" onAction="#onManualRefresh" />
+            <Button text="Shuffle" onAction="#onShuffle" />
+            <Button fx:id="fullScreenButton" text="Fullscreen" onAction="#onToggleFullscreen" />
+            <Label fx:id="statusLabel" text="Idle" />
+        </ToolBar>
+    </top>
+    <left>
+        <ListView fx:id="thumbList" prefWidth="220" />
+    </left>
+    <center>
+        <ImageView fx:id="imageView" preserveRatio="true" fitWidth="800" fitHeight="600" />
+    </center>
+    <padding>
+        <Insets top="5" right="5" bottom="5" left="5" />
+    </padding>
+</BorderPane>
