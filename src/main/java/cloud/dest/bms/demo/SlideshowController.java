@@ -9,6 +9,7 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
 import javafx.stage.Stage;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.StackPane;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -29,6 +30,9 @@ public class SlideshowController {
     @FXML private BorderPane rootPane;
     @FXML private ToolBar toolBar;
     @FXML private ListView<Path> thumbList; // new list view
+    @FXML private javafx.scene.layout.HBox statusBar; // new status bar
+    @FXML private Label fileCountLabel;               // shows number of files
+    @FXML private StackPane centerPane; // new center pane reference
 
     private Path rootDirectory;
     private final List<Path> imageFiles = new ArrayList<>();
@@ -51,6 +55,9 @@ public class SlideshowController {
     private final javafx.collections.ObservableList<Path> observableImages = javafx.collections.FXCollections.observableArrayList();
     private boolean suppressSelectionHandler = false; // new flag to avoid double-show
 
+    private WatchService watchService;           // file system watcher
+    private Future<?> watchTask;                 // task handling watch events
+
     @FXML
     private void initialize() {
         intervalSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 3600, 5));
@@ -59,9 +66,9 @@ public class SlideshowController {
             t.setDaemon(true);
             return t;
         });
-        // Bind image view size to root pane for responsive layout.
-        imageView.fitWidthProperty().bind(rootPane.widthProperty());
-        imageView.fitHeightProperty().bind(rootPane.heightProperty());
+        // Bind image view size to center pane so status bar remains visible.
+        imageView.fitWidthProperty().bind(centerPane.widthProperty());
+        imageView.fitHeightProperty().bind(centerPane.heightProperty());
         imageView.setPreserveRatio(true);
         imageView.setSmooth(true);
         imageView.setCache(true);
@@ -137,9 +144,12 @@ public class SlideshowController {
         } catch (Exception ignored) {
         }
         if (selected != null) {
+            // Stop any previous watcher before switching root
+            stopWatcher();
             rootDirectory = selected;
             status("Selected: " + rootDirectory);
             rebuildFileList();
+            startWatcher(); // start watching for live changes
         }
     }
 
@@ -219,33 +229,49 @@ public class SlideshowController {
         } catch (Exception ignored) { }
     }
 
-    private synchronized Path pickRandom() { // retained but unused now
-        if (imageFiles.isEmpty()) return null;
-        if (imageFiles.size() == 1) return imageFiles.get(0);
-        Path chosen;
-        int attempts = 0;
-        do {
-            chosen = imageFiles.get(random.nextInt(imageFiles.size()));
-            attempts++;
-        } while (chosen.equals(lastShown) && attempts < 5);
-        lastShown = chosen;
-        return chosen;
-    }
-
     private void rebuildFileList() {
         if (rootDirectory == null) return;
+        // Snapshot old list for change detection & order preservation
+        List<Path> oldList;
+        synchronized (this) {
+            oldList = new ArrayList<>(imageFiles);
+        }
+        Set<Path> oldSet = new HashSet<>(oldList);
         try (Stream<Path> stream = Files.walk(rootDirectory)) {
-            List<Path> all = stream.filter(Files::isRegularFile).filter(this::isImageFile)
+            List<Path> discovered = stream.filter(Files::isRegularFile).filter(this::isImageFile)
                     .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-            if (shuffledMode) {
-                Collections.shuffle(all, random);
-            } else {
-                Collections.sort(all); // ensure sorted order when not shuffled
+
+            // Detect additions
+            List<Path> added = new ArrayList<>();
+            for (Path p : discovered) {
+                if (!oldSet.contains(p)) added.add(p);
             }
+
+            boolean anyAdded = !added.isEmpty();
+            boolean anyRemoved = oldList.size() > discovered.size(); // simple heuristic
+
+            List<Path> finalOrder;
+            if (anyAdded) {
+                // Reshuffle entire list when new images appear
+                finalOrder = new ArrayList<>(discovered);
+                Collections.shuffle(finalOrder, random);
+                shuffledMode = true; // enter shuffled mode automatically
+            } else if (shuffledMode) {
+                // Preserve existing shuffled order; just drop removed items
+                finalOrder = new ArrayList<>();
+                for (Path p : oldList) {
+                    if (discovered.contains(p)) finalOrder.add(p);
+                }
+                // No additions so no new items need insertion
+            } else {
+                // Not in shuffle mode and no additions: keep sorted alphabetical
+                finalOrder = new ArrayList<>(discovered);
+                Collections.sort(finalOrder);
+            }
+
             synchronized (this) {
                 imageFiles.clear();
-                imageFiles.addAll(all);
-                // Adjust currentIndex to still point at same file if possible
+                imageFiles.addAll(finalOrder);
                 if (lastShown != null) {
                     int idx = imageFiles.indexOf(lastShown);
                     currentIndex = idx >= 0 ? idx : -1;
@@ -254,11 +280,91 @@ public class SlideshowController {
                 }
             }
             Platform.runLater(() -> {
-                observableImages.setAll(all);
-                // prune cache entries no longer present
+                observableImages.setAll(finalOrder);
                 thumbCache.keySet().removeIf(p -> !imageFiles.contains(p));
+                if (fileCountLabel != null) fileCountLabel.setText(String.valueOf(finalOrder.size()));
+                if (anyAdded) {
+                    status(String.format("New images: %d (auto-reshuffled)", added.size()));
+                } else if (anyRemoved) {
+                    status("Images removed (list updated)");
+                }
             });
         } catch (IOException ignored) { }
+    }
+
+    // Start a recursive WatchService that triggers rebuild on changes.
+    private void startWatcher() {
+        if (rootDirectory == null) return;
+        try {
+            watchService = FileSystems.getDefault().newWatchService();
+            registerAll(rootDirectory);
+            watchTask = scheduler.submit(this::processWatchEvents);
+        } catch (IOException e) {
+            status("Watcher error: " + e.getMessage());
+        }
+    }
+
+    private void registerAll(Path start) throws IOException {
+        try (Stream<Path> dirs = Files.walk(start)) {
+            dirs.filter(Files::isDirectory).forEach(dir -> {
+                try {
+                    dir.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
+                } catch (IOException ignored) { }
+            });
+        }
+    }
+
+    private void processWatchEvents() {
+        while (watchService != null && !Thread.currentThread().isInterrupted()) {
+            WatchKey key;
+            try {
+                key = watchService.take();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (ClosedWatchServiceException cwse) {
+                break;
+            }
+            Path dir = (Path) key.watchable();
+            boolean refreshNeeded = false;
+            for (WatchEvent<?> event : key.pollEvents()) {
+                WatchEvent.Kind<?> kind = event.kind();
+                if (kind == StandardWatchEventKinds.OVERFLOW) continue;
+                Path name = (Path) event.context();
+                Path child = dir.resolve(name);
+                if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
+                    if (Files.isDirectory(child)) {
+                        try { registerAll(child); } catch (IOException ignored) { }
+                        refreshNeeded = true; // new folder may contain images
+                    } else if (isImageFile(child)) {
+                        refreshNeeded = true;
+                    }
+                } else if (kind == StandardWatchEventKinds.ENTRY_DELETE || kind == StandardWatchEventKinds.ENTRY_MODIFY) {
+                    if (Files.isDirectory(child) || isImageFile(child)) {
+                        refreshNeeded = true;
+                    }
+                }
+            }
+            boolean valid = key.reset();
+            if (refreshNeeded) {
+                rebuildFileList();
+            }
+            if (!valid) {
+                // Directory no longer accessible; trigger full rebuild to clean stale entries.
+                rebuildFileList();
+            }
+        }
+    }
+
+    private void stopWatcher() {
+        if (watchTask != null) {
+            watchTask.cancel(true);
+            watchTask = null;
+        }
+        if (watchService != null) {
+            try { watchService.close(); } catch (IOException ignored) { }
+            watchService = null;
+        }
     }
 
     // Shuffle button handler
@@ -291,7 +397,7 @@ public class SlideshowController {
         Platform.runLater(() -> statusLabel.setText(msg));
     }
 
-    private void cancelTask(ScheduledFuture<?> task) {
+    private void cancelTask(java.util.concurrent.ScheduledFuture<?> task) {
         if (task != null) task.cancel(false);
     }
 
@@ -301,7 +407,6 @@ public class SlideshowController {
         Stage stage = (Stage) imageView.getScene().getWindow();
         boolean newState = !stage.isFullScreen();
         if (newState) {
-            // Apply UI changes immediately so toolbar hides even before property listener fires
             applyFullscreenUI(true);
             stage.setFullScreenExitHint("");
         } else {
@@ -315,18 +420,20 @@ public class SlideshowController {
             if (fullScreenButton != null) fullScreenButton.setText(full ? "Windowed" : "Fullscreen");
             if (toolBar != null) { toolBar.setVisible(!full); toolBar.setManaged(!full); }
             if (thumbList != null) { thumbList.setVisible(!full); thumbList.setManaged(!full); }
+            if (statusBar != null) { statusBar.setVisible(!full); statusBar.setManaged(!full); }
             if (rootPane != null) rootPane.setStyle("-fx-background-color: black;");
         });
     }
 
     public void shutdown() {
         onStop();
+        stopWatcher();
         if (scheduler != null) {
             scheduler.shutdownNow();
         }
     }
 
-    @FXML private void onManualRefresh() { // manual refresh button
+    @FXML private void onManualRefresh() {
         rebuildFileList();
         status("Refreshed");
     }

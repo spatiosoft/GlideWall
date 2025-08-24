@@ -3,6 +3,8 @@
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.control.*?>
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
 <BorderPane fx:id="rootPane" style="-fx-background-color: black;" xmlns:fx="http://javafx.com/fxml" fx:controller="cloud.dest.bms.demo.SlideshowController">
     <top>
         <ToolBar fx:id="toolBar">
@@ -21,8 +23,16 @@
         <ListView fx:id="thumbList" prefWidth="220" />
     </left>
     <center>
-        <ImageView fx:id="imageView" preserveRatio="true" fitWidth="800" fitHeight="600" />
+        <StackPane fx:id="centerPane">
+            <ImageView fx:id="imageView" preserveRatio="true" fitWidth="800" fitHeight="600" />
+        </StackPane>
     </center>
+    <bottom>
+        <HBox fx:id="statusBar" spacing="10" style="-fx-padding:4; -fx-background-color:#222; -fx-alignment: CENTER_LEFT;">
+            <Label text="Files:" />
+            <Label fx:id="fileCountLabel" text="0" />
+        </HBox>
+    </bottom>
     <padding>
         <Insets top="5" right="5" bottom="5" left="5" />
     </padding>
