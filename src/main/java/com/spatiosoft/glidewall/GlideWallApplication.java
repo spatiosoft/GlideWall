@@ -8,20 +8,20 @@ import javafx.scene.image.Image;
 
 import java.io.IOException;
 
-public class HelloApplication extends Application {
+public class GlideWallApplication extends Application {
     private SlideshowController controller;
 
     @Override
     public void start(Stage stage) throws IOException {
-        FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("slideshow-view.fxml"));
+        FXMLLoader fxmlLoader = new FXMLLoader(GlideWallApplication.class.getResource("slideshow-view.fxml"));
         Scene scene = new Scene(fxmlLoader.load(), 800, 600);
-        var css = HelloApplication.class.getResource("slideshow.css");
+        var css = GlideWallApplication.class.getResource("slideshow.css");
         if (css != null) scene.getStylesheets().add(css.toExternalForm());
         stage.setTitle("GlideWall");
-        var iconUrl = HelloApplication.class.getResource("glidewall-icon.png");
+        var iconUrl = GlideWallApplication.class.getResource("glidewall-icon.png");
         if (iconUrl == null) {
             // Fallback to old package location if file not yet moved
-            iconUrl = HelloApplication.class.getResource("/com/spatiosoft/glidewall/glidewall-icon.png");
+            iconUrl = GlideWallApplication.class.getResource("/com/spatiosoft/glidewall/glidewall-icon.png");
         }
         if (iconUrl != null) {
             stage.getIcons().add(new Image(iconUrl.toExternalForm()));

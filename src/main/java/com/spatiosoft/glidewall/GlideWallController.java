@@ -3,7 +3,7 @@ package com.spatiosoft.glidewall;
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 
-public class HelloController {
+public class GlideWallController {
     @FXML
     private Label welcomeText;
 
