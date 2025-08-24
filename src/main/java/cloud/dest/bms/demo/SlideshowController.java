@@ -66,12 +66,24 @@ public class SlideshowController {
             t.setDaemon(true);
             return t;
         });
-        // Bind image view size to center pane so status bar remains visible.
+        // Width can bind directly; height we manage manually to keep status bar visible.
         imageView.fitWidthProperty().bind(centerPane.widthProperty());
-        imageView.fitHeightProperty().bind(centerPane.heightProperty());
+        // Remove any prior fitHeight binding just in case (defensive)
+        imageView.fitHeightProperty().unbind();
         imageView.setPreserveRatio(true);
         imageView.setSmooth(true);
         imageView.setCache(true);
+        // Allow full shrink
+        rootPane.setMinHeight(0);
+        centerPane.setMinHeight(0);
+        if (thumbList != null) thumbList.setMinHeight(0);
+        // Recompute available height whenever layout-related sizes change.
+        Runnable sizeUpdater = this::updateAvailableImageHeight;
+        rootPane.heightProperty().addListener((o, a, b) -> sizeUpdater.run());
+        if (toolBar != null) toolBar.heightProperty().addListener((o,a,b)-> sizeUpdater.run());
+        if (statusBar != null) statusBar.heightProperty().addListener((o,a,b)-> sizeUpdater.run());
+        // Also run once after first layout pulse.
+        Platform.runLater(sizeUpdater);
         // Scene listener for ESC and fullscreen property changes.
         imageView.sceneProperty().addListener((obs, oldScene, newScene) -> {
             if (newScene != null) {
@@ -214,7 +226,10 @@ public class SlideshowController {
             Platform.runLater(() -> {
                 imageView.setImage(img);
                 imageView.setPreserveRatio(true);
-                statusLabel.setText(String.format("Showing %s (%d images)", file.getFileName(), imageFiles.size()));
+                // Restore per-image status text in status bar
+                if (statusLabel != null) {
+                    statusLabel.setText(String.format("Showing %s (%d images)", file.getFileName(), imageFiles.size()));
+                }
                 if (thumbList != null && !Objects.equals(thumbList.getSelectionModel().getSelectedItem(), file)) {
                     suppressSelectionHandler = true;
                     thumbList.getSelectionModel().select(file);
@@ -422,6 +437,7 @@ public class SlideshowController {
             if (thumbList != null) { thumbList.setVisible(!full); thumbList.setManaged(!full); }
             if (statusBar != null) { statusBar.setVisible(!full); statusBar.setManaged(!full); }
             if (rootPane != null) rootPane.setStyle("-fx-background-color: black;");
+            updateAvailableImageHeight(); // recompute after visibility changes
         });
     }
 
@@ -436,5 +452,17 @@ public class SlideshowController {
     @FXML private void onManualRefresh() {
         rebuildFileList();
         status("Refreshed");
+    }
+
+    private void updateAvailableImageHeight() {
+        if (rootPane == null || imageView == null) return;
+        double total = rootPane.getHeight();
+        double top = (toolBar != null && toolBar.isVisible()) ? toolBar.getHeight() : 0;
+        double bottom = (statusBar != null && statusBar.isVisible()) ? statusBar.getHeight() : 0;
+        // Account for padding (approx) if any; could read from insets but simple constant ok.
+        double padding = 10; // top+bottom combined approx
+        double available = total - top - bottom - padding;
+        if (available < 0) available = 0;
+        imageView.setFitHeight(available);
     }
 }

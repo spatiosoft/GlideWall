@@ -16,7 +16,6 @@
             <Button text="Refresh" onAction="#onManualRefresh" />
             <Button text="Shuffle" onAction="#onShuffle" />
             <Button fx:id="fullScreenButton" text="Fullscreen" onAction="#onToggleFullscreen" />
-            <Label fx:id="statusLabel" text="Idle" />
         </ToolBar>
     </top>
     <left>
@@ -28,9 +27,11 @@
         </StackPane>
     </center>
     <bottom>
-        <HBox fx:id="statusBar" spacing="10" style="-fx-padding:4; -fx-background-color:#222; -fx-alignment: CENTER_LEFT;">
-            <Label text="Files:" />
-            <Label fx:id="fileCountLabel" text="0" />
+        <HBox fx:id="statusBar" spacing="14" style="-fx-padding:4; -fx-background-color:#222; -fx-alignment: CENTER_LEFT;">
+            <Label text="Files:" style="-fx-text-fill: white;" />
+            <Label fx:id="fileCountLabel" text="0" style="-fx-text-fill: white;" />
+            <Label text="|" style="-fx-text-fill: #555;" />
+            <Label fx:id="statusLabel" text="Idle" style="-fx-text-fill: white;" />
         </HBox>
     </bottom>
     <padding>
