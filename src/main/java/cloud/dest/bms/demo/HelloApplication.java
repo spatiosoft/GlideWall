@@ -14,7 +14,10 @@ public class HelloApplication extends Application {
     public void start(Stage stage) throws IOException {
         FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("slideshow-view.fxml"));
         Scene scene = new Scene(fxmlLoader.load(), 800, 600);
-        stage.setTitle("Image Slideshow");
+        // Add dark theme stylesheet
+        var css = HelloApplication.class.getResource("slideshow.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+        stage.setTitle("GlideWall");
         stage.setScene(scene);
         stage.show();
         controller = fxmlLoader.getController();

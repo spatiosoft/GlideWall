@@ -10,6 +10,8 @@ import javafx.stage.Window;
 import javafx.stage.Stage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox; // added
+import javafx.scene.layout.Region; // added
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -399,6 +401,52 @@ public class SlideshowController {
         Platform.runLater(() -> {
             observableImages.setAll(new ArrayList<>(imageFiles));
             status("Shuffled");
+        });
+    }
+
+    @FXML private void onAbout() {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("About GlideWall");
+            alert.setHeaderText("GlideWall – Random / Sequential Image Slideshow");
+            StringBuilder sb = new StringBuilder();
+            sb.append("GlideWall lets you display all images inside a chosen folder and its subfolders as an auto-updating slideshow.\n\n")
+              .append("Key Features:\n")
+              .append(" • Choose Folder: pick the root directory to scan recursively.\n")
+              .append(" • Auto Detection: newly added or removed images are detected automatically (file watcher + periodic rescan).\n")
+              .append(" • Interval: set seconds between slides (spinner).\n")
+              .append(" • Start / Stop: control the slideshow playback.\n")
+              .append(" • Sequential Loop: images advance in order (or shuffled order if shuffle used).\n")
+              .append(" • Shuffle: randomize current list; new additions trigger auto-reshuffle.\n")
+              .append(" • Thumbnails: left panel shows all images; click to jump instantly.\n")
+              .append(" • Fullscreen: toggle with the button; press ESC to exit; UI & list hide in fullscreen.\n")
+              .append(" • Status Bar: shows total file count and currently displayed image.\n")
+              .append(" • Manual Refresh: force rebuild of the list.\n\n")
+              .append("Usage Tips:\n")
+              .append("1. Click 'Choose Folder' first.\n")
+              .append("2. Adjust the interval if desired.\n")
+              .append("3. Press Start; use Shuffle any time.\n")
+              .append("4. Add images to the folder tree – they appear automatically and reshuffle if new.\n")
+              .append("5. Use Fullscreen for a clean display (ESC to exit).\n\n")
+              .append("License: AGPL v3 – strong copyleft for network services.\n")
+              .append("Developed with assistance from AI tooling.\n\n")
+              .append("Open the license URL below for full terms.");
+            TextArea ta = new TextArea(sb.toString());
+            ta.setEditable(false);
+            ta.setWrapText(true);
+            ta.setPrefRowCount(18);
+            Hyperlink link = new Hyperlink("https://www.gnu.org/licenses/agpl-3.0.html");
+            link.setOnAction(e -> {
+                try {
+                    java.awt.Desktop.getDesktop().browse(java.net.URI.create(link.getText()));
+                } catch (Exception ignored) { }
+            });
+            VBox box = new VBox(8, ta, link);
+            box.setPrefWidth(640);
+            alert.getDialogPane().setContent(box);
+            alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+            // Dark styling reuse (inherit scene styles)
+            alert.showAndWait();
         });
     }
 
