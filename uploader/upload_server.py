@@ -27,6 +27,7 @@ import time
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import List, Tuple, Optional
+import urllib.parse  # added for URL encoding
 
 ALLOWED_EXT = {"jpg", "jpeg", "png", "gif", "bmp", "webp"}
 MAX_BYTES = 25 * 1024 * 1024  # 25 MB per request
@@ -181,13 +182,30 @@ class UploadHandler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args, upload_dir: str, **kwargs):
         self.upload_dir = upload_dir
+        self._script_dir = os.path.dirname(os.path.abspath(__file__))  # for serving viewer.js
         super().__init__(*args, directory=upload_dir, **kwargs)
 
     def do_GET(self):  # noqa: N802
+        # Serve our viewer script explicitly if requested.
+        if self.path == '/viewer.js':
+            return self._serve_viewer_js()
         if self.path == '/' or self.path.startswith('/?'):
             self._serve_index()
         else:
             super().do_GET()
+
+    def _serve_viewer_js(self):
+        path = os.path.join(self._script_dir, 'viewer.js')
+        try:
+            with open(path, 'rb') as f:
+                data = f.read()
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'application/javascript; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except OSError:
+            self.send_error(HTTPStatus.NOT_FOUND, 'viewer.js not found')
 
     def _serve_index(self):
         lang = pick_lang(self.path, self.headers)
@@ -203,9 +221,10 @@ class UploadHandler(SimpleHTTPRequestHandler):
         rows = []
         for img in images:
             esc = html.escape(img)
+            encoded = urllib.parse.quote(img)  # ensure safe URL
             rows.append(
-                f'<div class="thumb"><a href="{esc}" target="_blank" aria-label="Open {esc}">'  # accessibility label
-                f'<img loading="lazy" src="{esc}" alt="{esc}"></a><div class="cap" title="{esc}">{esc}</div></div>'
+                f'<div class="thumb"><a href="{encoded}" data-fn="{esc}" aria-label="Open {esc}">'  # accessibility label
+                f'<img loading="lazy" src="{encoded}" alt="{esc}"></a><div class="cap" title="{esc}">{esc}</div></div>'
             )
         gallery = '\n'.join(rows) or f'<p class="empty">{html.escape(T["no_images"])}</p>'
         count = len(images)
@@ -217,13 +236,12 @@ class UploadHandler(SimpleHTTPRequestHandler):
         choose_files_aria = html.escape(T['choose_files_aria'])
         upload_btn_aria = html.escape(T['upload_btn_aria'])
         page_title = html.escape(T['title'])
-        # Provide language switch links
         switch_links = '<div style="font-size:.65rem;opacity:.65;margin-left:auto;">' \
                        f'<a href="?lang=en" style="color:#7aa7d6;text-decoration:none;">EN</a> | ' \
                        f'<a href="?lang=fr" style="color:#7aa7d6;text-decoration:none;">FR</a></div>'
         page = f"""<!DOCTYPE html>
-<html lang=\"{lang}\"><head><meta charset=\"UTF-8\"><title>{page_title}</title>
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"/>
+<html lang="{lang}"><head><meta charset="UTF-8"><title>{page_title}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <style>
 :root {{
   --bg:#0f141a; --panel:#16202a; --panel-border:#243240; --text:#dfe7f1; --accent:#1e5bbf; --accent-hover:#2b76f2;
@@ -263,6 +281,7 @@ footer {{ margin-top:2rem; font-size:.65rem; opacity:.55; text-align:center; }}
 {gallery}
 </div>
 <footer>{footer}</footer>
+<script defer src="/viewer.js"></script>
 </body></html>"""
         data = page.encode('utf-8')
         self.send_response(HTTPStatus.OK)
