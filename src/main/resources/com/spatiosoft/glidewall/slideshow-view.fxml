@@ -17,6 +17,7 @@
             <Button text="Shuffle" onAction="#onShuffle" />
             <Button fx:id="fullScreenButton" text="Fullscreen" onAction="#onToggleFullscreen" />
             <Button text="About" onAction="#onAbout" />
+            <Button text="Server" onAction="#onOpenServerWindow" />
         </ToolBar>
     </top>
     <left>
@@ -40,4 +41,3 @@
         <Insets top="5" right="5" bottom="5" left="5" />
     </padding>
 </BorderPane>
-

@@ -8,16 +8,26 @@ import javafx.scene.image.ImageView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
 import javafx.stage.Stage;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.scene.layout.Region;
+import javafx.scene.Scene;
+import javafx.scene.layout.*;
+import javafx.geometry.Insets;
+// QR imports
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.WriterException;
+import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.common.BitMatrix;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import javafx.embed.swing.SwingFXUtils;
 
 import java.io.IOException;
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Stream;
+import java.awt.Desktop; // added missing import
 
 public class SlideshowController {
     @FXML private ImageView imageView;
@@ -53,6 +63,18 @@ public class SlideshowController {
 
     private WatchService watchService;
     private Future<?> watchTask;
+
+    private Stage serverStage;
+    private Process uploaderProcess;
+    private Label serverPathLabel;
+    private Label serverProcStatusLabel;
+    private Button serverStartButton;
+    private Button serverStopButton;
+    private TextArea serverLogArea;
+    private ExecutorService serverExec = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "uploader-log"); t.setDaemon(true); return t; });
+    // New URL + QR fields
+    private Hyperlink serverUrlLink;
+    private ImageView qrView;
 
     @FXML
     private void initialize() {
@@ -100,11 +122,205 @@ public class SlideshowController {
         thumbList.getSelectionModel().selectedItemProperty().addListener((obs,o,sel)-> { if (sel!=null && !suppressSelectionHandler) showImage(sel); });
     }
 
+    @FXML private void onOpenServerWindow() {
+        if (serverStage != null) { serverStage.toFront(); return; }
+        serverStage = new Stage();
+        serverStage.setTitle("Uploader Server");
+        serverStage.initOwner(imageView.getScene().getWindow());
+        serverStartButton = new Button("Start");
+        serverStopButton = new Button("Stop");
+        serverStopButton.setDisable(true);
+        serverProcStatusLabel = new Label("Stopped");
+        serverPathLabel = new Label(getUploaderTargetText());
+        serverPathLabel.setWrapText(true);
+        serverLogArea = new TextArea();
+        serverLogArea.setEditable(false);
+        serverLogArea.setPrefRowCount(10);
+        serverLogArea.setStyle("-fx-font-family: 'monospace'; -fx-font-size: 11;");
+        serverStartButton.setOnAction(e -> startUploader());
+        serverStopButton.setOnAction(e -> stopUploader());
+        Button closeBtn = new Button("Close"); closeBtn.setOnAction(e -> serverStage.close());
+        serverUrlLink = new Hyperlink("(server not started)");
+        serverUrlLink.setOnAction(e -> openInBrowser(serverUrlLink.getText()));
+        qrView = new ImageView();
+        qrView.setFitWidth(180); qrView.setFitHeight(180); qrView.setPreserveRatio(true);
+        HBox buttonRow = new HBox(8, serverStartButton, serverStopButton, serverProcStatusLabel, closeBtn);
+        buttonRow.setPadding(new Insets(4,0,4,0));
+        HBox urlRow = new HBox(6, new Label("URL:"), serverUrlLink);
+        VBox qrBox = new VBox(4, new Label("QR Code:"), qrView);
+        qrBox.setPadding(new Insets(4,0,0,0));
+        HBox topRow = new HBox(24, new VBox(8,
+                new Label("Python uploader for the selected slideshow folder."),
+                new Label("Target Folder:"), serverPathLabel,
+                buttonRow,
+                urlRow
+        ), qrBox);
+        VBox root = new VBox(10,
+                topRow,
+                new Label("Output:"), serverLogArea
+        );
+        root.setPadding(new Insets(10));
+        serverStage.setScene(new Scene(root, 760, 480));
+        serverStage.setOnCloseRequest(e -> {});
+        serverStage.show();
+        refreshServerUIState();
+        updateServerUrlAndQR();
+    }
+
+    private void updateServerUrlAndQR() {
+        if (serverUrlLink == null) return;
+        String url = buildServerUrl();
+        serverUrlLink.setText(url);
+        if (uploaderProcess != null && uploaderProcess.isAlive()) {
+            Image qr = generateQrImage(url, 260);
+            if (qr != null) qrView.setImage(qr);
+        } else {
+            qrView.setImage(null);
+        }
+    }
+
+    private String buildServerUrl() {
+        int port = 8080; // fixed for now
+        String host = "localhost";
+        try {
+            // Prefer a site-local IPv4 address for mobile scanning
+            Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+            outer: while (nets.hasMoreElements()) {
+                NetworkInterface ni = nets.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress a = addrs.nextElement();
+                    if (a instanceof Inet4Address ipv4 && !a.isLoopbackAddress() && a.isSiteLocalAddress()) { host = ipv4.getHostAddress(); break outer; }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "http://" + host + ":" + port + "/";
+    }
+
+    private Image generateQrImage(String text, int size) {
+        try {
+            Map<EncodeHintType,Object> hints = new EnumMap<>(EncodeHintType.class);
+            hints.put(EncodeHintType.MARGIN, 1);
+            var writer = new QRCodeWriter();
+            BitMatrix matrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size, hints);
+            BufferedImage img = new BufferedImage(matrix.getWidth(), matrix.getHeight(), BufferedImage.TYPE_INT_RGB);
+            for (int y=0; y<matrix.getHeight(); y++) {
+                for (int x=0; x<matrix.getWidth(); x++) {
+                    int v = matrix.get(x,y) ? 0x000000 : 0xFFFFFF;
+                    img.setRGB(x,y, v);
+                }
+            }
+            return SwingFXUtils.toFXImage(img, null);
+        } catch (WriterException e) {
+            appendServerLog("QR generation failed: " + e.getMessage() + "\n");
+            return null;
+        }
+    }
+
+    private void openInBrowser(String url) {
+        try {
+            if (Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().browse(URI.create(url));
+            }
+        } catch (Exception ex) {
+            appendServerLog("Cannot open browser: " + ex.getMessage() + "\n");
+        }
+    }
+
+    private void refreshServerUIState() {
+        if (serverPathLabel != null) serverPathLabel.setText(getUploaderTargetText());
+        boolean runningProc = uploaderProcess != null && uploaderProcess.isAlive();
+        if (serverStartButton != null) serverStartButton.setDisable(rootDirectory == null || runningProc);
+        if (serverStopButton != null) serverStopButton.setDisable(!runningProc);
+        if (serverProcStatusLabel != null) serverProcStatusLabel.setText(runningProc ? "Running" : "Stopped");
+        updateServerUrlAndQR();
+    }
+
+    private void startUploader() {
+        if (uploaderProcess != null && uploaderProcess.isAlive()) return;
+        if (rootDirectory == null) {
+            appendServerLog("Select a folder first before starting the server.\n");
+            return;
+        }
+        // Determine python executable (simple heuristic)
+        String python = System.getProperty("os.name").toLowerCase().contains("win") ? "python" : "python3";
+        Path projectDir = Paths.get(System.getProperty("user.dir"));
+        Path script = projectDir.resolve("uploader").resolve("upload_server.py");
+        if (!Files.exists(script)) {
+            appendServerLog("Uploader script not found: " + script + "\n");
+            return;
+        }
+        List<String> cmd = new ArrayList<>();
+        cmd.add(python);
+        cmd.add(script.toAbsolutePath().toString());
+        cmd.add("--folder");
+        cmd.add(rootDirectory.toAbsolutePath().toString());
+        cmd.add("--port");
+        cmd.add("8080"); // fixed port for now
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(projectDir.toFile());
+        pb.redirectErrorStream(true);
+        try {
+            uploaderProcess = pb.start();
+            appendServerLog("Started uploader process PID=" + uploaderProcess.pid() + "\n");
+            // consume output
+            serverExec.submit(() -> {
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(uploaderProcess.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        final String ln = line;
+                        Platform.runLater(() -> appendServerLog(ln + "\n"));
+                    }
+                } catch (IOException ignored) {}
+                Platform.runLater(() -> {
+                    appendServerLog("Uploader process ended.\n");
+                    refreshServerUIState();
+                });
+            });
+        } catch (IOException e) {
+            appendServerLog("Failed to start uploader: " + e.getMessage() + "\n");
+        }
+        refreshServerUIState();
+        updateServerUrlAndQR();
+    }
+
+    private void stopUploader() {
+        if (uploaderProcess != null && uploaderProcess.isAlive()) {
+            uploaderProcess.destroy();
+            appendServerLog("Stopping uploader...\n");
+            try {
+                if (!uploaderProcess.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                    uploaderProcess.destroyForcibly();
+                }
+            } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+        }
+        uploaderProcess = null;
+        updateServerUrlAndQR();
+        refreshServerUIState();
+    }
+
+    private void appendServerLog(String text) {
+        if (serverLogArea != null) {
+            serverLogArea.appendText(text);
+        }
+    }
+
+    private String getUploaderTargetText() {
+        // Returns a human-friendly description of the current uploader target directory.
+        if (rootDirectory == null) return "(no folder selected)";
+        try {
+            return rootDirectory.toRealPath().toString();
+        } catch (IOException e) {
+            return rootDirectory.toAbsolutePath().toString();
+        }
+    }
+
     @FXML private void onChooseFolder() {
         DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Select Image Folder");
         Window w = imageView.getScene()!=null? imageView.getScene().getWindow(): null;
         Path selected = null; try { var dir = chooser.showDialog(w); if (dir!=null) selected = dir.toPath(); } catch (Exception ignored) {}
-        if (selected!=null) { stopWatcher(); rootDirectory = selected; status("Selected: " + rootDirectory); rebuildFileList(); startWatcher(); }
+        if (selected!=null) { stopWatcher(); rootDirectory = selected; status("Selected: " + rootDirectory); rebuildFileList(); startWatcher(); refreshServerUIState(); }
     }
 
     @FXML private void onStart() { if (running) return; if (rootDirectory==null) { status("Choose a folder first"); return; } running=true; scheduleRescan(); scheduleSlideshow(); status("Running"); }
@@ -135,9 +351,14 @@ public class SlideshowController {
     private void cancelTask(ScheduledFuture<?> task) { if (task!=null) task.cancel(false); }
     @FXML private void onToggleFullscreen() { if (imageView.getScene()==null) return; Stage stage = (Stage) imageView.getScene().getWindow(); boolean newState = !stage.isFullScreen(); if (newState) { applyFullscreenUI(true); stage.setFullScreenExitHint(""); } else applyFullscreenUI(false); stage.setFullScreen(newState); }
     private void applyFullscreenUI(boolean full) { Platform.runLater(()-> { if (fullScreenButton!=null) fullScreenButton.setText(full? "Windowed":"Fullscreen"); if (toolBar!=null){ toolBar.setVisible(!full); toolBar.setManaged(!full);} if (thumbList!=null){ thumbList.setVisible(!full); thumbList.setManaged(!full);} if (statusBar!=null){ statusBar.setVisible(!full); statusBar.setManaged(!full);} if (rootPane!=null) rootPane.setStyle("-fx-background-color: black;"); updateAvailableImageHeight(); }); }
-    public void shutdown() { onStop(); stopWatcher(); if (scheduler!=null) scheduler.shutdownNow(); }
+    public void shutdown() {
+        onStop();
+        stopWatcher();
+        stopUploader();
+        if (scheduler!=null) scheduler.shutdownNow();
+        if (serverExec!=null) serverExec.shutdownNow();
+    }
     @FXML private void onManualRefresh() { rebuildFileList(); status("Refreshed"); }
     private void updateAvailableImageHeight() { if (rootPane==null || imageView==null) return; double total = rootPane.getHeight(); double top = (toolBar!=null && toolBar.isVisible())? toolBar.getHeight():0; double bottom = (statusBar!=null && statusBar.isVisible())? statusBar.getHeight():0; double padding = 10; double available = total - top - bottom - padding; if (available <0) available = 0; imageView.setFitHeight(available); }
     private void updatePlaceholderVisibility() { if (placeholderLabel==null) return; boolean noImages; synchronized (this) { noImages = imageFiles.isEmpty(); } boolean hasDisplayed = imageView!=null && imageView.getImage()!=null; boolean show = noImages || !hasDisplayed; placeholderLabel.setVisible(show); placeholderLabel.setManaged(show); if (noImages) { if (rootDirectory==null) placeholderLabel.setText("Click 'Choose Folder' to select a folder. Images inside it and its subfolders will play here."); else placeholderLabel.setText("No images found in the selected folder. Add images or choose another folder."); } }
 }
-
