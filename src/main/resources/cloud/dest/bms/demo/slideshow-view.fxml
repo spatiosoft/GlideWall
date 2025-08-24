@@ -25,6 +25,7 @@
     <center>
         <StackPane fx:id="centerPane">
             <ImageView fx:id="imageView" preserveRatio="true" fitWidth="800" fitHeight="600" />
+            <Label fx:id="placeholderLabel" text="Click 'Choose Folder' to select a folder. Images inside it and its subfolders will play here." wrapText="true" maxWidth="600" style="-fx-text-fill: #777; -fx-font-size: 18; -fx-alignment: center;" />
         </StackPane>
     </center>
     <bottom>

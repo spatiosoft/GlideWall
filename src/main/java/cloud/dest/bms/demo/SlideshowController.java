@@ -35,6 +35,7 @@ public class SlideshowController {
     @FXML private javafx.scene.layout.HBox statusBar; // new status bar
     @FXML private Label fileCountLabel;               // shows number of files
     @FXML private StackPane centerPane; // new center pane reference
+    @FXML private Label placeholderLabel; // placeholder instructions label
 
     private Path rootDirectory;
     private final List<Path> imageFiles = new ArrayList<>();
@@ -110,6 +111,7 @@ public class SlideshowController {
             }
         });
         setupThumbList();
+        Platform.runLater(this::updatePlaceholderVisibility);
     }
 
     private void installFullScreenListener(Stage stage) { // added helper
@@ -182,11 +184,15 @@ public class SlideshowController {
 
     @FXML
     private void onStop() {
-        if (!running) return;
+        if (!running) {
+            updatePlaceholderVisibility();
+            return;
+        }
         running = false;
         cancelTask(slideshowTask);
         cancelTask(rescanTask);
         status("Stopped");
+        updatePlaceholderVisibility();
     }
 
     private void scheduleSlideshow() {
@@ -228,7 +234,6 @@ public class SlideshowController {
             Platform.runLater(() -> {
                 imageView.setImage(img);
                 imageView.setPreserveRatio(true);
-                // Restore per-image status text in status bar
                 if (statusLabel != null) {
                     statusLabel.setText(String.format("Showing %s (%d images)", file.getFileName(), imageFiles.size()));
                 }
@@ -242,12 +247,16 @@ public class SlideshowController {
                     currentIndex = imageFiles.indexOf(file);
                     lastShown = file;
                 }
+                updatePlaceholderVisibility();
             });
         } catch (Exception ignored) { }
     }
 
     private void rebuildFileList() {
-        if (rootDirectory == null) return;
+        if (rootDirectory == null) {
+            Platform.runLater(this::updatePlaceholderVisibility);
+            return;
+        }
         // Snapshot old list for change detection & order preservation
         List<Path> oldList;
         synchronized (this) {
@@ -305,8 +314,9 @@ public class SlideshowController {
                 } else if (anyRemoved) {
                     status("Images removed (list updated)");
                 }
+                updatePlaceholderVisibility();
             });
-        } catch (IOException ignored) { }
+        } catch (IOException ignored) { Platform.runLater(this::updatePlaceholderVisibility); }
     }
 
     // Start a recursive WatchService that triggers rebuild on changes.
@@ -512,5 +522,22 @@ public class SlideshowController {
         double available = total - top - bottom - padding;
         if (available < 0) available = 0;
         imageView.setFitHeight(available);
+    }
+
+    private void updatePlaceholderVisibility() {
+        if (placeholderLabel == null) return;
+        boolean noImages;
+        synchronized (this) { noImages = imageFiles.isEmpty(); }
+        boolean hasDisplayed = imageView != null && imageView.getImage() != null;
+        boolean show = noImages || !hasDisplayed;
+        placeholderLabel.setVisible(show);
+        placeholderLabel.setManaged(show);
+        if (noImages) {
+            if (rootDirectory == null) {
+                placeholderLabel.setText("Click 'Choose Folder' to select a folder. Images inside it and its subfolders will play here.");
+            } else {
+                placeholderLabel.setText("No images found in the selected folder. Add images or choose another folder.");
+            }
+        }
     }
 }

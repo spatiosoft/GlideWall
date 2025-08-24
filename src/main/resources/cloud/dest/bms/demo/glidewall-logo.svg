@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="640" height="200" viewBox="0 0 640 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f9dff"/>
+      <stop offset="100%" stop-color="#0055aa"/>
+    </linearGradient>
+    <linearGradient id="gwGradLite" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#74c0ff"/>
+      <stop offset="100%" stop-color="#1b6ec2"/>
+    </linearGradient>
+    <clipPath id="iconClip">
+      <rect x="0" y="0" width="160" height="160" rx="28" ry="28" />
+    </clipPath>
+  </defs>
+  <rect width="640" height="200" rx="24" fill="#0b0f17"/>
+
+  <!-- Icon (reused from standalone) -->
+  <g transform="translate(20 20)" clip-path="url(#iconClip)">
+    <rect width="160" height="160" fill="#0b0f17"/>
+    <g stroke="#1d2935" stroke-width="3">
+      <path d="M0 40H160M0 80H160M0 120H160"/>
+      <path d="M40 0V160M80 0V160M120 0V160"/>
+    </g>
+    <path fill="url(#gwGrad)" d="M80 22c-31 0-57 26-57 58s26 58 57 58c21 0 37-9 47-24 2.7-4-0.4-9.2-4.9-9.2h-18.4c-2 0-3.6 1-4.7 2.7-5 7.4-12.7 11.3-21.7 11.3-16.7 0-30.3-14.1-30.3-31.5 0-17.3 13.6-31.5 30.3-31.5 10.9 0 19.9 5.4 25.4 14.5H86.2c-2.8 0-5 2.3-5 5.1v14.5c0 2.8 2.2 5.1 5 5.1h45c2.8 0 5-2.3 5-5.1v-6.6c0-33-25.6-58-56.2-58Z"/>
+    <path fill="url(#gwGradLite)" opacity="0.35" d="M80 37c-23.7 0-43 19.2-43 43s19.3 43 43 43c14 0 25.7-6.5 33.1-17.6H86.2c-8.4 0-15.2-6.8-15.2-15.2v-14.5c0-8.4 6.8-15.2 15.2-15.2h27c-7.2-11-19.1-18.5-33.2-18.5Z"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g font-family="'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif" font-weight="600" letter-spacing="1" transform="translate(200 55)">
+    <text x="0" y="64" font-size="86" fill="url(#gwGrad)" stroke="#0b0f17" stroke-width="1.2" paint-order="stroke">
+      GlideWall
+    </text>
+    <text x="2" y="138" font-size="22" fill="#7aa7d6" font-weight="400">Adaptive Auto-Updating Slideshow</text>
+  </g>
+
+  <!-- Optional safe margin -->
+  <rect x="8" y="8" width="624" height="184" rx="20" fill="none" stroke="#ffffff11" stroke-dasharray="10 8"/>
+</svg>
+

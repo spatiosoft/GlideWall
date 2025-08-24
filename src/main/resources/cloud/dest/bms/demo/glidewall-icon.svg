@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- GlideWall Icon: stylized "G" integrated into a modular wall motif -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f9dff"/>
+      <stop offset="100%" stop-color="#0055aa"/>
+    </linearGradient>
+    <linearGradient id="gradDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#74c0ff"/>
+      <stop offset="100%" stop-color="#1b6ec2"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect x="0" y="0" width="256" height="256" rx="42" ry="42"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="256" height="256" fill="#0b0f17"/>
+    <!-- subtle grid / wall bricks -->
+    <g stroke="#1d2935" stroke-width="4">
+      <path d="M0 64H256M0 128H256M0 192H256"/>
+      <path d="M64 0V256M128 0V256M192 0V256"/>
+    </g>
+    <!-- Outer stylized G path -->
+    <path fill="url(#grad)" d="M128 36c-50 0-92 42-92 92s42 92 92 92c34 0 61-14 78-38 4.5-6.3 0.7-15.2-7.1-15.2h-30.4c-3.2 0-6 1.7-7.7 4.4-7.7 12.3-19.8 18.8-33.8 18.8-25.9 0-47-22.1-47-48 0-26 21.1-48 47-48 16.9 0 30.9 8.3 39.5 22.1H136c-4.4 0-8 3.6-8 8v22c0 4.4 3.6 8 8 8h70c4.4 0 8-3.6 8-8v-10c0-51-40-92-86-92Z"/>
+    <!-- Inner accent (light variant of G) -->
+    <path fill="url(#gradDark)" opacity="0.35" d="M128 60c-37.6 0-68 30.4-68 68s30.4 68 68 68c22.2 0 40.7-10.2 52.3-27.8H136c-13.3 0-24-10.7-24-24v-22c0-13.3 10.7-24 24-24h43.9C168.5 72.3 149.8 60 128 60Z"/>
+  </g>
+  <!-- Safe zone guide (optional, hidden) -->
+  <rect x="12" y="12" width="232" height="232" rx="34" ry="34" fill="none" stroke="#ffffff22" stroke-dasharray="8 6" stroke-width="2"/>
+</svg>
+
