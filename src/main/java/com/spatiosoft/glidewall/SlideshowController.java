@@ -1,33 +1,41 @@
 package com.spatiosoft.glidewall;
 
-import javafx.application.Platform;
-import javafx.fxml.FXML;
-import javafx.scene.control.*;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.stage.DirectoryChooser;
-import javafx.stage.Window;
-import javafx.stage.Stage;
-import javafx.scene.Scene;
-import javafx.scene.layout.*;
-import javafx.geometry.Insets;
-// QR imports
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.WriterException;
-import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.common.BitMatrix;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import com.google.zxing.qrcode.QRCodeWriter;
+import javafx.animation.Animation;
+import javafx.animation.FadeTransition;
+import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.fxml.FXML;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Stage;
+import javafx.stage.Window;
+import javafx.util.Duration;
 
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.net.*;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.URI;
 import java.nio.file.*;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.stream.Stream;
-import java.awt.Desktop; // added missing import
 
 public class SlideshowController {
     @FXML private ImageView imageView;
@@ -86,6 +94,11 @@ public class SlideshowController {
 
     private boolean autoStartDone = false; // ensures auto-start happens only once
     private boolean userStartStopAction = false; // set true if user explicitly starts/stops to prevent auto restarts
+
+    // Cross-fade transition fields
+    private ImageView transitionOverlay; // temporary overlay for cross-fade
+    private Animation currentTransition;
+    private boolean firstImageDisplayed = false;
 
     @FXML
     private void initialize() {
@@ -386,7 +399,66 @@ public class SlideshowController {
 
     private void showNextImage() { if (!running) return; Path file; synchronized (this) { if (imageFiles.isEmpty()) return; if (currentIndex <0 || currentIndex>= imageFiles.size()) currentIndex = -1; currentIndex = (currentIndex+1) % imageFiles.size(); file = imageFiles.get(currentIndex); lastShown = file; } showImage(file); }
 
-    private void showImage(Path file) { try { Image img = new Image(file.toUri().toString(), true); Platform.runLater(()-> { imageView.setImage(img); imageView.setPreserveRatio(true); if (statusLabel!=null) statusLabel.setText(String.format("Showing %s (%d images)", file.getFileName(), imageFiles.size())); if (thumbList!=null && !Objects.equals(thumbList.getSelectionModel().getSelectedItem(), file)) { suppressSelectionHandler=true; thumbList.getSelectionModel().select(file); thumbList.scrollTo(file); suppressSelectionHandler=false; } synchronized (this) { currentIndex = imageFiles.indexOf(file); lastShown = file; } updatePlaceholderVisibility(); }); } catch (Exception ignored) {} }
+    private void showImage(Path file) { try { Image img = new Image(file.toUri().toString(), true); Platform.runLater(()-> { crossFadeToImage(img); if (statusLabel!=null) statusLabel.setText(String.format("Showing %s (%d images)", file.getFileName(), imageFiles.size())); if (thumbList!=null && !Objects.equals(thumbList.getSelectionModel().getSelectedItem(), file)) { suppressSelectionHandler=true; thumbList.getSelectionModel().select(file); thumbList.scrollTo(file); suppressSelectionHandler=false; } synchronized (this) { currentIndex = imageFiles.indexOf(file); lastShown = file; } updatePlaceholderVisibility(); }); } catch (Exception ignored) {} }
+
+    private void crossFadeToImage(Image newImage) {
+        if (imageView == null) return;
+        // If first image, no animation.
+        if (!firstImageDisplayed || imageView.getImage() == null) {
+            imageView.setImage(newImage);
+            firstImageDisplayed = true;
+            return;
+        }
+        // If a transition is in progress, finalize it immediately.
+        if (currentTransition != null && currentTransition.getStatus() == Animation.Status.RUNNING) {
+            currentTransition.stop();
+            if (transitionOverlay != null) {
+                imageView.setOpacity(1.0);
+                imageView.setImage(transitionOverlay.getImage());
+                ((Pane)transitionOverlay.getParent()).getChildren().remove(transitionOverlay);
+                transitionOverlay = null;
+            }
+        }
+        // Prepare overlay with the new image.
+        transitionOverlay = new ImageView(newImage);
+        transitionOverlay.setPreserveRatio(true);
+        transitionOverlay.setSmooth(true);
+        transitionOverlay.setCache(true);
+        // Mirror sizing bindings of base imageView.
+        transitionOverlay.fitWidthProperty().bind(imageView.fitWidthProperty());
+        transitionOverlay.fitHeightProperty().bind(imageView.fitHeightProperty());
+        transitionOverlay.setOpacity(0.0);
+        if (centerPane != null) {
+            centerPane.getChildren().add(transitionOverlay);
+        } else if (imageView.getParent() instanceof Pane p) {
+            p.getChildren().add(transitionOverlay);
+        }
+        // Fade out current imageView, fade in overlay then swap.
+        FadeTransition fadeOut = new FadeTransition(Duration.millis(550), imageView);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(550), transitionOverlay);
+        fadeIn.setFromValue(0.0);
+        fadeIn.setToValue(1.0);
+        fadeIn.setOnFinished(e -> {
+            // Swap image into base view and cleanup overlay.
+            imageView.setImage(newImage);
+            imageView.setOpacity(1.0);
+            if (transitionOverlay != null) {
+                transitionOverlay.fitWidthProperty().unbind();
+                transitionOverlay.fitHeightProperty().unbind();
+                if (transitionOverlay.getParent() instanceof Pane p2) {
+                    p2.getChildren().remove(transitionOverlay);
+                }
+                transitionOverlay = null;
+            }
+            currentTransition = null;
+        });
+        // Start both transitions.
+        fadeOut.play();
+        fadeIn.play();
+        currentTransition = fadeIn; // track primary (fadeIn) for cancellation logic
+    }
 
     private void rebuildFileList() { if (rootDirectory==null) { Platform.runLater(this::updatePlaceholderVisibility); return; } List<Path> oldList; synchronized (this) { oldList = new ArrayList<>(imageFiles); } Set<Path> oldSet = new HashSet<>(oldList); try (Stream<Path> stream = Files.walk(rootDirectory)) { List<Path> discovered = stream.filter(Files::isRegularFile).filter(this::isImageFile).collect(java.util.stream.Collectors.toCollection(ArrayList::new)); List<Path> added = new ArrayList<>(); for (Path p: discovered) if (!oldSet.contains(p)) added.add(p); boolean anyAdded = !added.isEmpty(); boolean anyRemoved = oldList.size() > discovered.size(); List<Path> finalOrder; if (anyAdded) { finalOrder = new ArrayList<>(discovered); Collections.shuffle(finalOrder, random); shuffledMode = true; } else if (shuffledMode) { finalOrder = new ArrayList<>(); for (Path p: oldList) if (discovered.contains(p)) finalOrder.add(p); } else { finalOrder = new ArrayList<>(discovered); Collections.sort(finalOrder); }
         synchronized (this) { imageFiles.clear(); imageFiles.addAll(finalOrder); if (lastShown!=null) { int idx = imageFiles.indexOf(lastShown); currentIndex = idx>=0? idx : -1; } else currentIndex = -1; }
